@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#10312A">
+<title>Chrono Scrabble</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;800&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================================
+   TOKENS — palette « plateau de jeu » : feutrine verte, tuiles os,
+   accents repris des cases primes (bleu = lettre comptée double,
+   carmine = mot compte triple).
+   ========================================================================= */
+:root{
+  --board-deep:#10312A;
+  --board:#1A4A3C;
+  --tile:#EFE2C6;
+  --tile-dim:#8FA79A;
+  --ink:#1E1B14;
+  --azure:#3E7CA6;
+  --carmine:#B33A34;
+  --rule:rgba(239,226,198,.18);
+
+  --display:"Bitter", Georgia, serif;
+  --ui:"Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --gap:6px;
+  --radius:14px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--board-deep);
+  color:var(--tile);
+  font-family:var(--ui);
+  overscroll-behavior:none;
+  touch-action:manipulation;
+  -webkit-user-select:none;user-select:none;
+}
+#app{height:100dvh;display:flex;flex-direction:column}
+.screen{flex:1;min-height:0;display:flex;flex-direction:column}
+[hidden]{display:none !important}
+:focus-visible{outline:3px solid var(--azure);outline-offset:3px}
+
+/* =========================================================================
+   ÉCRAN DE RÉGLAGES
+   ========================================================================= */
+#setup{
+  padding:calc(env(safe-area-inset-top) + 28px) 22px calc(env(safe-area-inset-bottom) + 22px);
+  gap:26px;overflow-y:auto;
+}
+.wordmark{display:flex;gap:4px;flex-wrap:wrap}
+.wordmark span{
+  width:34px;height:34px;border-radius:5px;
+  background:var(--tile);color:var(--ink);
+  font-family:var(--display);font-weight:800;font-size:20px;
+  display:grid;place-items:center;
+  box-shadow:0 2px 0 rgba(0,0,0,.35);
+}
+.wordmark span:nth-child(3n){background:#E3D3B2}
+.tagline{
+  font-size:13px;line-height:1.5;color:rgba(239,226,198,.6);
+  max-width:34ch;margin-top:14px;
+}
+fieldset{border:0}
+legend{
+  font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  color:rgba(239,226,198,.55);margin-bottom:10px;
+}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{
+  flex:1 1 auto;min-width:64px;
+  background:transparent;border:1px solid var(--rule);color:var(--tile);
+  border-radius:10px;padding:13px 10px;
+  font-family:var(--ui);font-size:15px;font-weight:500;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.chip[aria-pressed="true"]{background:var(--tile);border-color:var(--tile);color:var(--ink);font-weight:700}
+.hint{font-size:12px;color:rgba(239,226,198,.45);margin-top:9px;line-height:1.5}
+
+.roster{list-style:none;display:flex;flex-direction:column;gap:7px}
+.roster li{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(239,226,198,.06);border:1px solid var(--rule);
+  border-radius:10px;padding:6px 6px 6px 14px;
+}
+.roster .seat-num{
+  font-family:var(--display);font-weight:800;font-size:13px;
+  color:rgba(239,226,198,.45);width:1.2em;flex:none;
+}
+.roster input{
+  flex:1;min-width:0;background:transparent;border:0;color:var(--tile);
+  font-family:var(--ui);font-size:15px;font-weight:500;padding:8px 2px;
+}
+.roster input::placeholder{color:rgba(239,226,198,.35)}
+.roster .move{
+  border:0;background:transparent;color:var(--tile);
+  width:34px;height:34px;flex:none;border-radius:8px;font-size:15px;
+}
+.roster .move:disabled{opacity:.2}
+.roster .move:active:not(:disabled){background:rgba(239,226,198,.14)}
+.start{
+  margin-top:auto;width:100%;border:0;border-radius:var(--radius);
+  background:var(--azure);color:#0B2029;
+  font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:.02em;
+  padding:20px;
+}
+.start:active{transform:translateY(1px)}
+
+/* =========================================================================
+   PLATEAU DE JEU — une « case » (.seat) par joueur, orientée vers lui ;
+   la tuile (.tile) porte l'état visuel et les animations.
+   ========================================================================= */
+#board{
+  flex:1;min-height:0;display:grid;gap:var(--gap);padding:var(--gap);
+  padding-top:calc(env(safe-area-inset-top) + var(--gap));
+  padding-bottom:calc(env(safe-area-inset-bottom) + var(--gap));
+}
+#board[data-count="2"]{grid-template-rows:1fr 1fr}
+#board[data-count="3"]{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+#board[data-count="3"] .seat:nth-child(3){grid-column:1 / -1}
+#board[data-count="4"]{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+/* Le flux naturel de la grille place les enfants en Z (HG, HD, BG, BD).
+   On force le 3e et le 4e siège pour que la rotation suive le sens horaire :
+   HG -> HD -> BD -> BG, comme autour d'une vraie table. */
+#board[data-count="4"] .seat:nth-child(3){grid-area:2 / 2}
+#board[data-count="4"] .seat:nth-child(4){grid-area:2 / 1}
+
+.seat{display:flex;min-height:0;min-width:0;position:relative}
+.seat.flipped{transform:rotate(180deg)}
+
+.tile{
+  flex:1;position:relative;overflow:hidden;
+  border:0;border-radius:var(--radius);
+  background:var(--tile-dim);color:rgba(30,27,20,.5);
+  font-family:var(--ui);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:background .28s ease,color .28s ease,box-shadow .28s ease;
+}
+.tile.is-active{
+  background:var(--tile);color:var(--ink);
+  box-shadow:inset 0 0 0 3px rgba(30,27,20,.14), 0 6px 0 rgba(0,0,0,.28);
+}
+.tile.is-active.is-urgent{background:var(--carmine);color:#FBEDE9;box-shadow:0 6px 0 rgba(0,0,0,.3)}
+.tile.is-out{background:#2C1D1B;color:rgba(239,226,198,.42);box-shadow:none}
+
+/* le chrono : chiffres tabulaires, sinon la ligne « saute » à chaque dixième */
+.clock{
+  font-family:var(--display);font-weight:800;
+  font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;
+  font-size:clamp(38px,13vw,88px);line-height:1;letter-spacing:-.02em;
+}
+#board[data-count="4"] .clock,#board[data-count="3"] .clock{font-size:clamp(32px,9.5vw,64px)}
+.seat-name{
+  position:absolute;top:12px;left:14px;
+  font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;opacity:.65;
+}
+/* le petit chiffre en bas à droite d'une tuile de Scrabble indique sa valeur ;
+   ici il compte les coups joués par le joueur. */
+.seat-moves{position:absolute;bottom:10px;right:14px;font-size:15px;font-weight:700;opacity:.55}
+.seat-moves::after{content:" coups";font-size:9px;letter-spacing:.14em;text-transform:uppercase;opacity:.8}
+.seat-msg{margin-top:10px;font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;opacity:.6;min-height:14px}
+
+/* --- Score : bouton posé sur la tuile, et pavé de saisie confiné au siège ---
+   Le pavé occupe la tuile du joueur concerné et rien d'autre : les autres
+   joueurs peuvent continuer à valider leurs coups pendant la saisie. */
+.score-btn{
+  position:absolute;bottom:10px;left:50%;translate:-50% 0;z-index:4;
+  border:0;border-radius:999px;padding:7px 15px;
+  background:rgba(30,27,20,.14);color:inherit;
+  font-family:var(--ui);font-weight:700;font-size:clamp(15px,4.4vw,22px);
+  font-variant-numeric:tabular-nums;
+  display:flex;align-items:baseline;gap:6px;
+}
+.tile.is-out ~ .score-btn,.tile:not(.is-active) ~ .score-btn{background:rgba(0,0,0,.16);color:rgba(239,226,198,.75)}
+.score-btn small{font-size:9px;letter-spacing:.16em;text-transform:uppercase;opacity:.65}
+
+.pad{
+  position:absolute;inset:0;z-index:6;
+  background:#0D2A24;border:1px solid var(--rule);border-radius:var(--radius);
+  display:flex;flex-direction:column;gap:5px;padding:8px;
+}
+.pad__head{
+  display:flex;justify-content:space-between;align-items:baseline;
+  font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:rgba(239,226,198,.6);
+}
+.pad__entry{
+  font-family:var(--display);font-weight:800;font-variant-numeric:tabular-nums;
+  font-size:clamp(22px,7vw,40px);text-align:center;line-height:1.05;color:var(--tile);
+}
+.pad__keys{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;min-height:0}
+.pad__keys button,.pad__actions button{
+  border:0;border-radius:8px;background:rgba(239,226,198,.1);color:var(--tile);
+  font-family:var(--ui);font-weight:600;font-size:clamp(14px,4.6vw,22px);
+  font-variant-numeric:tabular-nums;
+}
+.pad__keys button:active,.pad__actions button:active{background:rgba(239,226,198,.26)}
+.pad__actions{display:grid;grid-template-columns:1fr 1.6fr;gap:4px}
+.pad__actions button{padding:11px 6px;font-size:13px;letter-spacing:.04em}
+.pad__actions .ok{background:var(--azure);color:#0B2029;font-weight:700}
+
+/* jeton « +temps » qui monte quand le tour est validé */
+.bonus{
+  position:absolute;left:50%;bottom:26%;translate:-50% 0;
+  background:var(--azure);color:#0B2029;
+  font-size:13px;font-weight:700;padding:5px 11px;border-radius:999px;
+  opacity:0;pointer-events:none;
+}
+.bonus.show{animation:rise .9s ease-out}
+@keyframes rise{
+  0%{opacity:0;translate:-50% 12px;scale:.9}
+  22%{opacity:1;scale:1}
+  100%{opacity:0;translate:-50% -46px}
+}
+.tile.just-played{animation:press .22s ease-out}
+@keyframes press{50%{transform:scale(.975)}}
+
+/* =========================================================================
+   PASTILLE DE CONTRÔLE — posée au centre, là où les tuiles se rejoignent
+   ========================================================================= */
+#hud{
+  position:fixed;top:50%;left:50%;translate:-50% -50%;
+  display:flex;gap:6px;align-items:center;
+  background:rgba(9,29,25,.92);border:1px solid var(--rule);
+  border-radius:999px;padding:5px;backdrop-filter:blur(6px);
+}
+#hud button{
+  border:0;background:transparent;color:var(--tile);
+  font-family:var(--ui);font-size:12px;font-weight:600;
+  padding:9px 13px;border-radius:999px;letter-spacing:.03em;
+}
+#hud button:active{background:rgba(239,226,198,.14)}
+#btnPause{background:var(--tile);color:var(--ink);font-weight:700}
+
+#banner{
+  position:fixed;left:50%;top:calc(50% + 42px);translate:-50% 0;
+  font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+  color:rgba(239,226,198,.7);text-align:center;
+}
+
+/* Volontairement discret et loin du pouce : coin haut, faible contraste,
+   double appui requis (voir onResetLink) plutôt qu'une popup de confirmation. */
+#btnResetLink{
+  position:fixed;top:calc(env(safe-area-inset-top) + 8px);left:50%;translate:-50% 0;
+  z-index:5;border:0;background:transparent;
+  color:rgba(239,226,198,.32);font-family:var(--ui);font-size:10px;
+  letter-spacing:.14em;text-transform:uppercase;padding:6px 10px;
+}
+#btnResetLink.armed{color:var(--carmine);font-weight:700}
+@media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ÉCRAN 1 — RÉGLAGES -->
+  <section id="setup" class="screen">
+    <header>
+      <div class="wordmark" aria-label="Chrono Scrabble">
+        <span>C</span><span>H</span><span>R</span><span>O</span><span>N</span><span>O</span>
+      </div>
+      <p class="tagline">Une horloge d'échecs pour le Scrabble. Chaque joueur appuie sur sa propre tuile pour valider son coup et lancer le voisin.</p>
+    </header>
+
+    <fieldset>
+      <legend>Joueurs</legend>
+      <div class="chips" id="optPlayers">
+        <button class="chip" data-v="2">2</button>
+        <button class="chip" data-v="3">3</button>
+        <button class="chip" data-v="4">4</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Noms et ordre de jeu</legend>
+      <ul class="roster" id="roster"></ul>
+      <p class="hint">L'ordre de la liste est l'ordre de la table : la flèche ▼ envoie un joueur juste après son voisin.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Temps par joueur</legend>
+      <div class="chips" id="optBase">
+        <button class="chip" data-v="5">5 min</button>
+        <button class="chip" data-v="10">10 min</button>
+        <button class="chip" data-v="15">15 min</button>
+        <button class="chip" data-v="20">20 min</button>
+        <button class="chip" data-v="30">30 min</button>
+        <button class="chip" data-v="45">45 min</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Ajouté à chaque coup</legend>
+      <div class="chips" id="optInc">
+        <button class="chip" data-v="0">aucun</button>
+        <button class="chip" data-v="10">10 s</button>
+        <button class="chip" data-v="30">30 s</button>
+        <button class="chip" data-v="60">1 min</button>
+        <button class="chip" data-v="120">2 min</button>
+      </div>
+      <p class="hint">Le bonus est crédité au joueur quand il valide son coup, comme un incrément Fischer.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Saisie des points</legend>
+      <div class="chips" id="optScore">
+        <button class="chip" data-v="1">À chaque coup</button>
+        <button class="chip" data-v="0">Quand je veux</button>
+      </div>
+      <p class="hint">Le pavé s'ouvre sur la tuile du joueur concerné, jamais sur celle des autres : la partie continue pendant la saisie. Appuyer sur le total permet aussi de le corriger à tout moment (touche ± pour retrancher).</p>
+    </fieldset>
+
+    <button class="start" id="btnStart">Placer les tuiles</button>
+  </section>
+
+  <!-- ÉCRAN 2 — PARTIE -->
+  <section id="game" class="screen" hidden>
+    <div id="board"></div>
+  </section>
+
+  <div id="hud" hidden>
+    <button id="btnPause">Pause</button>
+    <button id="btnQuit">Réglages</button>
+  </div>
+  <button id="btnResetLink" hidden>Réinitialiser</button>
+  <p id="banner" hidden></p>
+</div>
+
+<script>
+"use strict";
+/* ==========================================================================
+   1. ÉTAT — source de vérité unique. Rien d'autre ne détient d'information
+      de jeu : le DOM n'est qu'une projection de cet objet.
+   ========================================================================== */
+const S = {
+  phase: "setup",      // setup | ready | running | paused | over
+  count: 2,
+  baseMs: 15 * 60000,
+  incMs: 60000,
+  askScore: true,      // ouvrir le pavé automatiquement après chaque coup
+  players: [],         // {name, leftMs, moves, out, score}
+  active: 0,
+  turnStart: null      // horodatage absolu du début du tour en cours
+};
+
+// Saisie en cours : quel joueur, quels chiffres tapés, quel signe.
+// Isolé de S : c'est de l'état d'interface, pas de l'état de jeu.
+const PAD = { open: null, entry: "", sign: 1 };
+
+// Noms et ordre saisis à l'écran de réglages. Séparé de S.players : ce
+// dernier n'existe qu'une fois la partie lancée (newGame() le construit à
+// partir de ROSTER). Un tableau de 4 cases fixes évite de perdre un nom déjà
+// tapé si l'utilisateur bascule de 4 à 2 joueurs puis revient à 4.
+const ROSTER = ["", "", "", ""];
+
+/* ==========================================================================
+   2. TEMPS — on ne décrémente JAMAIS un compteur dans un setInterval :
+      les minuteurs du navigateur dérivent et sont bridés quand l'écran
+      s'éteint. On stocke un capital (leftMs) et l'instant de départ du tour ;
+      le temps restant est toujours recalculé à partir de l'horloge système.
+      La boucle d'affichage ne fait que lire, jamais modifier.
+   ========================================================================== */
+const now = () => Date.now();
+const leftOf = (i) =>
+  (S.phase === "running" && i === S.active)
+    ? Math.max(0, S.players[i].leftMs - (now() - S.turnStart))
+    : S.players[i].leftMs;
+
+/** Fige le temps consommé dans le capital du joueur actif. */
+function commit(){
+  if (S.turnStart === null) return;
+  const p = S.players[S.active];
+  p.leftMs = Math.max(0, p.leftMs - (now() - S.turnStart));
+  S.turnStart = null;
+}
+
+function fmt(ms){
+  if (ms <= 0) return "0.0";
+  if (ms < 60000){                       // sous la minute : dixièmes visibles
+    const s = Math.floor(ms / 1000);
+    return s + "." + Math.floor((ms % 1000) / 100);
+  }
+  const t = Math.ceil(ms / 1000);
+  return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0");
+}
+
+/* ==========================================================================
+   3. TRANSITIONS — les seules fonctions autorisées à muter S.
+   ========================================================================== */
+function newGame(){
+  S.players = Array.from({length: S.count}, (_, i) => ({
+    name: (ROSTER[i] || "").trim() || "Joueur " + (i + 1),
+    leftMs: S.baseMs, moves: 0, out: false, score: 0
+  }));
+  PAD.open = null; PAD.entry = ""; PAD.sign = 1;
+  S.active = 0; S.turnStart = null; S.phase = "ready";
+  buildBoard();   // la structure dépend du nombre de joueurs : on la reconstruit
+  render();
+}
+
+const alive = () => S.players.filter(p => !p.out).length;
+
+function nextIndex(from){
+  for (let k = 1; k <= S.count; k++){
+    const j = (from + k) % S.count;
+    if (!S.players[j].out) return j;
+  }
+  return from;
+}
+
+/** Le joueur actif valide son coup : bonus crédité, main passée au suivant. */
+function endTurn(){
+  if (S.phase !== "running") return;
+  commit();
+  const p = S.players[S.active];
+  p.moves++;
+  if (S.incMs) { p.leftMs += S.incMs; showBonus(S.active); }
+  pulse(S.active);
+  const justPlayed = S.active;
+  S.active = nextIndex(S.active);
+  S.turnStart = now();
+  // Un pavé ouvert ne doit jamais masquer la tuile du joueur qui doit jouer.
+  if (PAD.open === S.active) closePad();
+  if (S.askScore) openPad(justPlayed);
+  render();
+}
+
+function startWith(i){
+  if (S.players[i].out) return;
+  if (PAD.open === i) { PAD.open = null; PAD.entry = ""; PAD.sign = 1; }
+  S.active = i; S.phase = "running"; S.turnStart = now();
+  keepAwake(); render();
+}
+
+function flag(){
+  commit();
+  const p = S.players[S.active];
+  p.leftMs = 0; p.out = true;
+  beep(120, 0.35);
+  if (navigator.vibrate) navigator.vibrate([90, 60, 90]);
+  if (alive() <= 1){ S.phase = "over"; }
+  else { S.active = nextIndex(S.active); S.turnStart = now(); }
+  render();
+}
+
+function togglePause(){
+  if (S.phase === "running"){ commit(); S.phase = "paused"; }
+  else if (S.phase === "paused"){ S.turnStart = now(); S.phase = "running"; keepAwake(); }
+  render();
+}
+
+/* ==========================================================================
+   4. RENDU — deux niveaux :
+      render()  : reconstruit/synchronise la structure et les états (rare) ;
+      paint()   : appelé à chaque frame, ne touche qu'aux chiffres et aux
+                  classes d'urgence. Séparer les deux évite de recréer du DOM
+                  60 fois par seconde.
+   ========================================================================== */
+const board = document.getElementById("board"),
+      hud = document.getElementById("hud"),
+      banner = document.getElementById("banner"),
+      setupEl = document.getElementById("setup"),
+      gameEl = document.getElementById("game"),
+      btnPause = document.getElementById("btnPause"),
+      btnResetLink = document.getElementById("btnResetLink");
+let tiles = [];
+
+function buildBoard(){
+  board.innerHTML = "";
+  board.dataset.count = S.count;
+  tiles = S.players.map((p, i) => {
+    const seat = document.createElement("div");
+    seat.className = "seat";
+    // Les joueurs d'en face lisent la tuile à l'envers : on la retourne.
+    const flipped = (S.count === 2) ? i === 0 : i < 2;
+    if (flipped) seat.classList.add("flipped");
+
+    const tile = document.createElement("button");
+    tile.className = "tile";
+    tile.innerHTML =
+      '<span class="seat-name">' + p.name + '</span>' +
+      '<span class="clock">' + fmt(p.leftMs) + '</span>' +
+      '<span class="seat-msg"></span>' +
+      '<span class="seat-moves">0</span>' +
+      '<span class="bonus"></span>';
+    tile.addEventListener("pointerdown", (e) => { e.preventDefault(); onTile(i); });
+
+    const score = document.createElement("button");
+    score.className = "score-btn";
+    score.innerHTML = '<span class="score-val">0</span><small>points</small>';
+    score.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); openPad(i); });
+
+    const pad = document.createElement("div");
+    pad.className = "pad"; pad.hidden = true;
+    pad.innerHTML =
+      '<div class="pad__head"><span>' + p.name + '</span><span class="pad__total"></span></div>' +
+      '<div class="pad__entry">+0</div>' +
+      '<div class="pad__keys">' +
+        [1,2,3,4,5,6,7,8,9].map(n => '<button data-k="' + n + '">' + n + '</button>').join("") +
+        '<button data-k="sign">±</button><button data-k="0">0</button><button data-k="back">⌫</button>' +
+      '</div>' +
+      '<div class="pad__actions"><button data-k="close">Fermer</button>' +
+      '<button class="ok" data-k="add">Ajouter au total</button></div>';
+    pad.addEventListener("pointerdown", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      e.preventDefault(); e.stopPropagation(); onKey(i, b.dataset.k);
+    });
+
+    seat.append(tile, score, pad); board.appendChild(seat);
+    return tile;
+  });
+}
+
+/* --- Écran de réglages : liste des noms et de l'ordre ------------------ */
+const rosterEl = document.getElementById("roster");
+function buildRoster(){
+  rosterEl.innerHTML = "";
+  for (let i = 0; i < S.count; i++){
+    const li = document.createElement("li");
+    li.innerHTML =
+      '<span class="seat-num">' + (i + 1) + '</span>' +
+      '<input type="text" maxlength="16" placeholder="Joueur ' + (i + 1) + '">' +
+      '<button class="move" data-dir="up" aria-label="Monter">▲</button>' +
+      '<button class="move" data-dir="down" aria-label="Descendre">▼</button>';
+    const input = li.querySelector("input");
+    input.value = ROSTER[i] || "";
+    input.addEventListener("input", () => { ROSTER[i] = input.value; });
+    li.querySelector('[data-dir="up"]').disabled = (i === 0);
+    li.querySelector('[data-dir="down"]').disabled = (i === S.count - 1);
+    rosterEl.appendChild(li);
+  }
+}
+rosterEl.addEventListener("click", (e) => {
+  const b = e.target.closest(".move"); if (!b || b.disabled) return;
+  const i = [...rosterEl.children].indexOf(b.closest("li"));
+  const j = b.dataset.dir === "up" ? i - 1 : i + 1;
+  [ROSTER[i], ROSTER[j]] = [ROSTER[j], ROSTER[i]];
+  buildRoster();  // reconstruire relit ROSTER : les champs affichent le nouvel ordre
+});
+
+
+// Le pavé apparaît exactement sous le doigt qui vient de valider un coup.
+// Un relâchement tactile imparfait peut générer un second événement qui
+// tombe alors sur une touche du pavé fraîchement affiché. On ignore les
+// appuis sur le pavé pendant ce court délai après son ouverture.
+const PAD_GUARD_MS = 300;
+let padOpenedAt = 0;
+const seatOf = (i) => board.children[i];
+function openPad(i){
+  PAD.open = i; PAD.entry = ""; PAD.sign = 1;
+  padOpenedAt = now();
+  render();
+}
+function closePad(){ PAD.open = null; PAD.entry = ""; PAD.sign = 1; render(); }
+function onKey(i, k){
+  if (now() - padOpenedAt < PAD_GUARD_MS) return;   // rebond tactile : on ignore
+  if (k === "close"){ closePad(); return; }
+  if (k === "add"){
+    S.players[i].score += PAD.sign * Number(PAD.entry || 0);
+    beep(560, .05); closePad(); return;
+  }
+  if (k === "sign") PAD.sign *= -1;
+  else if (k === "back") PAD.entry = PAD.entry.slice(0, -1);
+  else if (PAD.entry.length < 3) PAD.entry += k;
+  render();
+}
+
+function onTile(i){
+  if (S.phase === "ready") startWith(i);
+  else if (S.phase === "running" && i === S.active) endTurn();
+}
+
+function render(){
+  const inGame = S.phase !== "setup";
+  setupEl.hidden = inGame; gameEl.hidden = !inGame; hud.hidden = !inGame;
+  btnResetLink.hidden = !inGame;
+  if (!inGame){ banner.hidden = true; return; }
+
+  S.players.forEach((p, i) => {
+    const t = tiles[i];
+    t.classList.toggle("is-active", !p.out && (S.phase === "running" && i === S.active));
+    t.classList.toggle("is-out", p.out);
+    t.querySelector(".seat-moves").textContent = p.moves;
+    t.querySelector(".seat-msg").textContent =
+      p.out ? "temps écoulé"
+      : S.phase === "ready" ? "appuyer pour commencer"
+      : (S.phase === "running" && i === S.active) ? "valider mon coup" : "";
+
+    const seat = seatOf(i);
+    seat.querySelector(".score-val").textContent = p.score;
+    const pad = seat.querySelector(".pad");
+    pad.hidden = PAD.open !== i;
+    if (!pad.hidden){
+      pad.querySelector(".pad__total").textContent = "total " + p.score;
+      pad.querySelector(".pad__entry").textContent =
+        (PAD.sign < 0 ? "−" : "+") + (PAD.entry || "0");
+    }
+  });
+
+  btnPause.textContent = S.phase === "paused" ? "Reprendre" : "Pause";
+  btnPause.hidden = (S.phase === "ready" || S.phase === "over");
+  banner.hidden = !(S.phase === "paused" || S.phase === "over");
+  if (S.phase === "paused") banner.textContent = "Partie en pause";
+  else if (S.phase === "over"){
+    const rank = [...S.players].sort((a, b) => b.score - a.score);
+    banner.textContent = "Fin du temps — " + rank[0].name + " gagne avec " + rank[0].score + " points";
+  }
+  paint();
+}
+
+function paint(){
+  for (let i = 0; i < S.players.length; i++){
+    const ms = leftOf(i), t = tiles[i], c = t.querySelector(".clock"), s = fmt(ms);
+    if (c.textContent !== s) c.textContent = s;
+    t.classList.toggle("is-urgent", !S.players[i].out && ms < 30000);
+  }
+}
+
+function pulse(i){
+  const t = tiles[i];
+  t.classList.remove("just-played"); void t.offsetWidth; t.classList.add("just-played");
+  beep(880, 0.05);
+  if (navigator.vibrate) navigator.vibrate(18);
+}
+function showBonus(i){
+  const b = tiles[i].querySelector(".bonus");
+  b.textContent = "+" + (S.incMs >= 60000 ? fmt(S.incMs) : Math.round(S.incMs/1000) + " s");
+  b.classList.remove("show"); void b.offsetWidth; b.classList.add("show");
+}
+
+/* Boucle d'animation : pilote l'affichage et détecte la chute du drapeau. */
+function loop(){
+  if (S.phase === "running" && leftOf(S.active) <= 0) flag();
+  else if (S.phase !== "setup") paint();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ==========================================================================
+   5. PLATEFORME — son, écran allumé, retour d'arrière-plan.
+   ========================================================================== */
+let ac = null;
+function beep(freq, dur){
+  try{
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === "suspended") ac.resume();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = "triangle"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.001, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.25, ac.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+    o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime + dur + 0.02);
+  }catch(e){}
+}
+let lock = null;
+async function keepAwake(){
+  try{ if ("wakeLock" in navigator && !lock) lock = await navigator.wakeLock.request("screen"); }catch(e){}
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible"){
+    if (S.phase === "running") keepAwake();
+    paint();          // le temps a continué de courir : on resynchronise l'affichage
+  } else { lock = null; }
+});
+
+/* ==========================================================================
+   6. RÉGLAGES
+   ========================================================================== */
+function group(id, initial, apply){
+  const el = document.getElementById(id);
+  const set = (v) => {
+    [...el.children].forEach(b => b.setAttribute("aria-pressed", b.dataset.v === String(v)));
+    apply(Number(v));
+  };
+  el.addEventListener("click", e => { const b = e.target.closest(".chip"); if (b) set(b.dataset.v); });
+  set(initial);
+}
+group("optPlayers", 2,  v => { S.count = v; buildRoster(); });
+group("optBase",   15,  v => S.baseMs = v * 60000);
+group("optInc",    60,  v => S.incMs = v * 1000);
+group("optScore",   1,  v => S.askScore = !!v);
+
+document.getElementById("btnStart").addEventListener("click", () => { beep(660, .04); newGame(); });
+btnPause.addEventListener("click", togglePause);
+document.getElementById("btnQuit").addEventListener("click", () => { disarmReset(); S.phase = "setup"; render(); });
+
+/* Armer / confirmer : premier appui = simple avertissement pendant 3 s,
+   second appui dans ce délai = réinitialisation réelle. Évite une popup
+   native tout en rendant l'action difficile à déclencher par erreur. */
+let resetTimer = null;
+btnResetLink.addEventListener("click", () => {
+  if (!btnResetLink.classList.contains("armed")){
+    btnResetLink.classList.add("armed");
+    btnResetLink.textContent = "Confirmer la réinitialisation ?";
+    resetTimer = setTimeout(disarmReset, 3000);
+  } else {
+    disarmReset();
+    newGame();
+  }
+});
+function disarmReset(){
+  clearTimeout(resetTimer);
+  btnResetLink.classList.remove("armed");
+  btnResetLink.textContent = "Réinitialiser";
+}
+
+// Barre d'espace = valider son coup (utile sur un ordinateur portable posé à plat).
+document.addEventListener("keydown", e => {
+  if (e.code === "Space"){ e.preventDefault(); if (S.phase === "running") endTurn(); }
+  if (e.code === "KeyP") togglePause();
+});
+</script>
+</body>
+</html>
