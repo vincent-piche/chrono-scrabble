@@ -130,7 +130,11 @@ legend{
    ========================================================================= */
 #board{
   flex:1;min-height:0;display:grid;gap:var(--gap);padding:var(--gap);
-  padding-top:calc(env(safe-area-inset-top) + var(--gap));
+  /* marge du haut agrandie : sur la rangée du haut (retournée 180deg), le bas
+     local de la tuile — donc la capsule de points et le compteur de coups —
+     se retrouve physiquement en haut de l'écran, pile où flotte le lien
+     Réinitialiser ; il leur faut cette respiration pour ne pas se chevaucher. */
+  padding-top:calc(env(safe-area-inset-top) + 40px);
   padding-bottom:calc(env(safe-area-inset-bottom) + var(--gap));
 }
 #board[data-count="2"]{grid-template-rows:1fr 1fr}
@@ -312,9 +316,29 @@ legend{
 }
 #btnResetLink.armed{color:var(--carmine);font-weight:700}
 @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+
+/* L'app est dessinée pour le portrait (rangée du haut retournée 180deg pour
+   faire face au joueur d'en face) ; en paysage cette mise en page ne tient
+   plus. screen.orientation.lock() ne fonctionne qu'en PWA installée, donc on
+   couvre aussi le cas navigateur avec ce garde-fou purement CSS. */
+#rotate-guard{display:none}
+@media (orientation:landscape){
+  #app{display:none}
+  #rotate-guard{
+    display:flex;height:100dvh;align-items:center;justify-content:center;
+    flex-direction:column;gap:10px;padding:32px;text-align:center;
+    background:var(--board-deep);color:var(--tile);font-family:var(--ui);
+  }
+  #rotate-guard strong{font-family:var(--display);font-size:19px}
+  #rotate-guard p{font-size:13px;line-height:1.5;color:rgba(239,226,198,.6);max-width:32ch}
+}
 </style>
 </head>
 <body>
+<div id="rotate-guard" aria-hidden="true">
+  <strong>Tournez votre appareil</strong>
+  <p>Chrono Scrabble se joue en mode portrait.</p>
+</div>
 <div id="app">
 
   <!-- ÉCRAN 1 — RÉGLAGES -->
@@ -380,6 +404,9 @@ legend{
 
 <script>
 "use strict";
+// Verrou d'orientation best-effort (n'a d'effet qu'en PWA installée / plein
+// écran) ; le garde-fou CSS #rotate-guard couvre les autres cas.
+try { screen.orientation && screen.orientation.lock && screen.orientation.lock("portrait").catch(() => {}); } catch (e) {}
 /* ==========================================================================
    1. ÉTAT — source de vérité unique. Rien d'autre ne détient d'information
       de jeu : le DOM n'est qu'une projection de cet objet.
