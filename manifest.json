@@ -1,6 +1,6 @@
 {
   "name": "Chrono Scrabble",
-  "short_name": "Chrono",
+  "short_name": "Chrono Scrabble",
   "description": "Horloge d'échecs et compteur de points pour le Scrabble, 2 à 4 joueurs.",
   "id": "/",
   "start_url": "./index.html",
