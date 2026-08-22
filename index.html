@@ -131,9 +131,9 @@ legend{
 #board{
   flex:1;min-height:0;display:grid;gap:var(--gap);padding:var(--gap);
   /* marge du haut agrandie : sur la rangée du haut (retournée 180deg), le bas
-     local de la tuile — donc la capsule de points et le compteur de coups —
-     se retrouve physiquement en haut de l'écran, pile où flotte le lien
-     Réinitialiser ; il leur faut cette respiration pour ne pas se chevaucher. */
+     local de la tuile — donc la pastille de score — se retrouve physiquement
+     en haut de l'écran, pile où flotte le lien Réinitialiser ; il leur faut
+     cette respiration pour ne pas se chevaucher. */
   padding-top:calc(env(safe-area-inset-top) + 40px);
   padding-bottom:calc(env(safe-area-inset-bottom) + var(--gap));
 }
@@ -171,6 +171,19 @@ legend{
   100%{box-shadow:inset 0 0 0 3px transparent;scale:1}
 }
 .tile.swap-flash .seat-name{animation:swapNameFade .45s ease-out}
+/* Pastille qui suit le doigt pendant le glisser : sans elle, rien ne bouge
+   visiblement à l'écran tant qu'on n'a pas relâché, et le geste passe
+   inaperçu. Hors du flux normal (fixed, non tournée) pour rester lisible
+   même issue d'un siège retourné à 180deg. */
+.drag-ghost{
+  position:fixed;top:0;left:0;z-index:20;pointer-events:none;
+  translate:-50% -50%;
+  padding:10px 18px;border-radius:999px;
+  background:var(--tile);color:var(--ink);
+  font-family:var(--display);font-weight:800;font-size:15px;
+  box-shadow:0 10px 24px rgba(0,0,0,.4);
+  opacity:0;
+}
 @keyframes swapNameFade{0%{opacity:0}35%{opacity:0}100%{opacity:1}}
 .tile.is-active{
   background:var(--tile);color:var(--ink);
@@ -190,28 +203,29 @@ legend{
   position:absolute;top:12px;left:14px;
   font-size:12.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;opacity:.7;
 }
-/* le petit chiffre en bas à droite d'une tuile de Scrabble indique sa valeur ;
-   ici il compte les coups joués par le joueur. */
-.seat-moves{position:absolute;bottom:10px;right:14px;font-size:15px;font-weight:700;opacity:.55}
-.seat-moves::after{content:" coups";font-size:9px;letter-spacing:.14em;text-transform:uppercase;opacity:.8}
+/* Le compteur de coups est discret, en haut à droite (miroir du nom, en
+   haut à gauche) : ça le tient définitivement à l'écart du score, qui vit
+   plus bas et doit rester le repère principal de la tuile. */
+.seat-moves{position:absolute;top:12px;right:14px;font-size:12px;font-weight:700;opacity:.5}
+.seat-moves::after{content:" coups";font-size:8px;letter-spacing:.14em;text-transform:uppercase;opacity:.8}
 .seat-msg{margin-top:10px;font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;opacity:.6;min-height:14px}
 
-/* --- Score : bouton posé sur la tuile, et pavé de saisie confiné au siège ---
+/* --- Score : pastille ronde posée sur la tuile (repère principal, plus
+   visible que le compteur de coups), et pavé de saisie confiné au siège ---
    Le pavé occupe la tuile du joueur concerné et rien d'autre : les autres
    joueurs peuvent continuer à valider leurs coups pendant la saisie. */
 .score-btn{
-  /* décalée du bord bas pour ne jamais chevaucher le compteur de coups
-     (bottom:10px, même rangée) ni, sur un siège retourné, le bouton
-     Réinitialiser fixé en haut de l'écran. */
-  position:absolute;bottom:22px;left:50%;translate:-50% 0;z-index:4;
-  border:0;border-radius:999px;padding:7px 15px;
-  background:rgba(30,27,20,.2);color:inherit;
-  font-family:var(--ui);font-weight:700;font-size:clamp(15px,4.4vw,22px);
+  position:absolute;bottom:16px;left:50%;translate:-50% 0;z-index:4;
+  width:clamp(58px,18vw,84px);height:clamp(58px,18vw,84px);
+  border:0;border-radius:50%;
+  background:rgba(30,27,20,.22);color:inherit;
+  font-family:var(--ui);font-weight:800;
   font-variant-numeric:tabular-nums;
-  display:flex;align-items:baseline;gap:6px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
 }
-.tile.is-out ~ .score-btn,.tile:not(.is-active) ~ .score-btn{background:rgba(0,0,0,.22);color:rgba(239,226,198,.88)}
-.score-btn small{font-size:9px;letter-spacing:.16em;text-transform:uppercase;opacity:.65}
+.tile.is-out ~ .score-btn,.tile:not(.is-active) ~ .score-btn{background:rgba(0,0,0,.26);color:rgba(239,226,198,.92)}
+.score-btn .score-val{font-size:clamp(20px,6.5vw,30px);line-height:1}
+.score-btn small{font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.7}
 
 .pad{
   position:absolute;inset:0;z-index:6;
@@ -374,7 +388,16 @@ legend{
     <fieldset>
       <legend>Noms des joueurs</legend>
       <ul class="roster" id="roster"></ul>
-      <p class="hint">Peu importe l'ordre de saisie ici : une fois assis à table, glissez les tuiles entre elles pour retrouver l'ordre réel autour de la table.</p>
+      <p class="hint">Saisissez les noms dans l'ordre réel du tour de table (peu importe qui commence). Le sens ci-dessous précise comment ça tourne ensuite ; une fois les tuiles affichées, vous pourrez encore les glisser l'une sur l'autre pour ajuster.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Sens de rotation</legend>
+      <div class="chips" id="optDirection">
+        <button class="chip" data-v="1">⟳ Horaire</button>
+        <button class="chip" data-v="-1">⟲ Anti-horaire</button>
+      </div>
+      <p class="hint">Sens des aiguilles d'une montre en regardant le plateau posé sur la table, dans l'ordre de saisie ci-dessus.</p>
     </fieldset>
 
     <fieldset>
@@ -426,6 +449,7 @@ const S = {
   count: 2,
   baseMs: 12 * 60000,
   incMs: 60000,
+  direction: 1,        // 1 = horaire, -1 = anti-horaire (voir nextIndex)
   players: [],         // {name, leftMs, moves, out, score}
   active: 0,
   turnStart: null      // horodatage absolu du début du tour en cours
@@ -451,7 +475,7 @@ const CHECK = { open: null, query: "" };
 // Glisser-déposer d'une tuile sur une autre pour échanger deux joueurs de
 // place. N'existe qu'en phase "ready" : l'ordre autour de la table se règle
 // une fois les joueurs assis, pas avant — voir DRAG_THRESHOLD_PX plus bas.
-const DRAG = { from: null, moved: false, startX: 0, startY: 0 };
+const DRAG = { from: null, moved: false, startX: 0, startY: 0, ghost: null };
 const DRAG_THRESHOLD_PX = 10;
 
 // Dictionnaire chargé à la demande (pas au démarrage) pour ne pas retarder
@@ -547,7 +571,7 @@ const alive = () => S.players.filter(p => !p.out).length;
 
 function nextIndex(from){
   for (let k = 1; k <= S.count; k++){
-    const j = (from + k) % S.count;
+    const j = (((from + k * S.direction) % S.count) + S.count) % S.count;
     if (!S.players[j].out) return j;
   }
   return from;
@@ -713,25 +737,48 @@ function moveDrag(e){
   if (!DRAG.moved && Math.hypot(e.clientX - DRAG.startX, e.clientY - DRAG.startY) > DRAG_THRESHOLD_PX){
     DRAG.moved = true;
     tiles[DRAG.from].classList.add("is-dragging");
+    DRAG.ghost = document.createElement("div");
+    DRAG.ghost.className = "drag-ghost";
+    DRAG.ghost.textContent = S.players[DRAG.from].name;
+    document.body.appendChild(DRAG.ghost);
   }
   if (!DRAG.moved) return;
+  DRAG.ghost.style.left = e.clientX + "px";
+  DRAG.ghost.style.top = e.clientY + "px";
+  DRAG.ghost.style.opacity = "1";
   const over = dropTargetAt(e.clientX, e.clientY);
   tiles.forEach((t, k) => t.classList.toggle("drag-over", k === over && k !== DRAG.from));
 }
 function endDrag(e){
-  const from = DRAG.from, moved = DRAG.moved;
+  const from = DRAG.from, moved = DRAG.moved, ghost = DRAG.ghost;
   const target = moved ? dropTargetAt(e.clientX, e.clientY) : null;
   tiles.forEach(t => t.classList.remove("is-dragging", "drag-over"));
-  DRAG.from = null; DRAG.moved = false;
+  DRAG.from = null; DRAG.moved = false; DRAG.ghost = null;
   if (moved){
+    const landOn = (target !== null && target !== from) ? target : from;
     if (target !== null && target !== from){
       [S.players[from], S.players[target]] = [S.players[target], S.players[from]];
       render();
       flashSwap(from, target);
     }
+    flyGhostTo(ghost, tiles[landOn]);
   } else {
     onTile(from);   // pas de déplacement : c'était un simple appui pour démarrer
   }
+}
+// Termine le geste en laissant la pastille glisser jusqu'au centre de sa
+// tuile d'arrivée (celle échangée, ou la tuile de départ si le dépôt est
+// invalide) avant de disparaître — plutôt qu'un décrochage brutal au doigt.
+function flyGhostTo(ghost, tile){
+  if (!ghost) return;
+  const r = tile.getBoundingClientRect();
+  requestAnimationFrame(() => {
+    ghost.style.transition = "left .2s ease, top .2s ease, opacity .2s ease .05s";
+    ghost.style.left = (r.left + r.width / 2) + "px";
+    ghost.style.top = (r.top + r.height / 2) + "px";
+    ghost.style.opacity = "0";
+  });
+  setTimeout(() => ghost.remove(), 260);
 }
 function flashSwap(a, b){
   [a, b].forEach(i => {
@@ -744,7 +791,8 @@ function flashSwap(a, b){
 function cancelDrag(){
   if (DRAG.from === null) return;
   tiles.forEach(t => t.classList.remove("is-dragging", "drag-over"));
-  DRAG.from = null; DRAG.moved = false;
+  if (DRAG.ghost) DRAG.ghost.remove();
+  DRAG.from = null; DRAG.moved = false; DRAG.ghost = null;
 }
 
 /* --- Écran de réglages : liste des noms ---------------------------------
@@ -960,6 +1008,7 @@ function group(id, initial, apply){
   set(initial);
 }
 group("optPlayers", 2,  v => { S.count = v; buildRoster(); });
+group("optDirection", 1, v => { S.direction = v; });
 
 function stepper(id, initial, min, max, apply){
   const el = document.getElementById(id), valEl = el.querySelector(".stepper__val > span");
