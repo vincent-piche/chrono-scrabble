@@ -122,6 +122,7 @@ legend{
   padding:20px;
 }
 .start:active{transform:translateY(1px)}
+.start.resume{background:var(--tile);color:var(--ink);margin-top:0}
 
 /* =========================================================================
    PLATEAU DE JEU — une « case » (.seat) par joueur, orientée vers lui ;
@@ -173,7 +174,7 @@ legend{
 #board[data-count="4"] .clock,#board[data-count="3"] .clock{font-size:clamp(32px,9.5vw,64px)}
 .seat-name{
   position:absolute;top:12px;left:14px;
-  font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;opacity:.65;
+  font-size:12.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;opacity:.7;
 }
 /* le petit chiffre en bas à droite d'une tuile de Scrabble indique sa valeur ;
    ici il compte les coups joués par le joueur. */
@@ -185,14 +186,17 @@ legend{
    Le pavé occupe la tuile du joueur concerné et rien d'autre : les autres
    joueurs peuvent continuer à valider leurs coups pendant la saisie. */
 .score-btn{
-  position:absolute;bottom:10px;left:50%;translate:-50% 0;z-index:4;
+  /* décalée du bord bas pour ne jamais chevaucher le compteur de coups
+     (bottom:10px, même rangée) ni, sur un siège retourné, le bouton
+     Réinitialiser fixé en haut de l'écran. */
+  position:absolute;bottom:22px;left:50%;translate:-50% 0;z-index:4;
   border:0;border-radius:999px;padding:7px 15px;
-  background:rgba(30,27,20,.14);color:inherit;
+  background:rgba(30,27,20,.2);color:inherit;
   font-family:var(--ui);font-weight:700;font-size:clamp(15px,4.4vw,22px);
   font-variant-numeric:tabular-nums;
   display:flex;align-items:baseline;gap:6px;
 }
-.tile.is-out ~ .score-btn,.tile:not(.is-active) ~ .score-btn{background:rgba(0,0,0,.16);color:rgba(239,226,198,.75)}
+.tile.is-out ~ .score-btn,.tile:not(.is-active) ~ .score-btn{background:rgba(0,0,0,.22);color:rgba(239,226,198,.88)}
 .score-btn small{font-size:9px;letter-spacing:.16em;text-transform:uppercase;opacity:.65}
 
 .pad{
@@ -322,6 +326,8 @@ legend{
       <p class="tagline">Une horloge d'échecs pour le Scrabble. Chaque joueur appuie sur sa propre tuile pour valider son coup et lancer le voisin.</p>
     </header>
 
+    <button class="start resume" id="btnResume" hidden>Reprendre la partie</button>
+
     <fieldset>
       <legend>Joueurs</legend>
       <div class="chips" id="optPlayers">
@@ -348,23 +354,12 @@ legend{
 
     <fieldset>
       <legend>Ajouté à chaque coup</legend>
-      <div class="chips" id="optInc">
-        <button class="chip" data-v="0">aucun</button>
-        <button class="chip" data-v="10">10 s</button>
-        <button class="chip" data-v="30">30 s</button>
-        <button class="chip" data-v="60">1 min</button>
-        <button class="chip" data-v="120">2 min</button>
+      <div class="stepper" id="optInc">
+        <button class="stepper__btn" data-d="-10" aria-label="Diminuer">−</button>
+        <span class="stepper__val"><span>60</span> s</span>
+        <button class="stepper__btn" data-d="10" aria-label="Augmenter">+</button>
       </div>
-      <p class="hint">Le bonus est crédité au joueur quand il valide son coup, comme un incrément Fischer.</p>
-    </fieldset>
-
-    <fieldset>
-      <legend>Saisie des points</legend>
-      <div class="chips" id="optScore">
-        <button class="chip" data-v="1">À chaque coup</button>
-        <button class="chip" data-v="0">Quand je veux</button>
-      </div>
-      <p class="hint">Le pavé s'ouvre sur la tuile du joueur concerné, jamais sur celle des autres : la partie continue pendant la saisie. Appuyer sur le total permet aussi de le corriger à tout moment (touche ± pour retrancher).</p>
+      <p class="hint">Le bonus est crédité au joueur quand il valide son coup, comme un incrément Fischer. Le pavé de score s'ouvre automatiquement à ce moment-là — et reste accessible à tout moment via son bouton, y compris en pause.</p>
     </fieldset>
 
     <button class="start" id="btnStart">Démarrer la partie</button>
@@ -394,11 +389,17 @@ const S = {
   count: 2,
   baseMs: 12 * 60000,
   incMs: 60000,
-  askScore: true,      // ouvrir le pavé automatiquement après chaque coup
   players: [],         // {name, leftMs, moves, out, score}
   active: 0,
   turnStart: null      // horodatage absolu du début du tour en cours
 };
+
+// Écran de réglages consulté par-dessus une partie en cours (bouton
+// "Réglages" du HUD), sans jamais l'effacer : indépendant de S.phase, qui
+// continue de décrire l'état réel de la partie (paused/running/...) le temps
+// qu'on regarde autre chose. « Reprendre la partie » se contente de le
+// repasser à false — S n'a pas bougé entre-temps.
+let showSetup = false;
 
 // Saisie en cours : quel joueur, quels chiffres tapés, quel signe.
 // Isolé de S : c'est de l'état d'interface, pas de l'état de jeu.
@@ -500,6 +501,7 @@ function newGame(){
   }));
   PAD.open = null; PAD.entry = ""; PAD.sign = 1;
   S.active = 0; S.turnStart = null; S.phase = "ready";
+  showSetup = false;
   buildBoard();   // la structure dépend du nombre de joueurs : on la reconstruit
   render();
 }
@@ -529,7 +531,7 @@ function endTurn(){
   // joueur qui doit jouer.
   if (PAD.open === S.active) closePad();
   if (CHECK.open === S.active) closeChecker();
-  if (S.askScore) openPad(justPlayed);
+  openPad(justPlayed);   // le pavé de score reste par ailleurs accessible à tout moment, y compris en pause
   render();
 }
 
@@ -571,7 +573,8 @@ const board = document.getElementById("board"),
       setupEl = document.getElementById("setup"),
       gameEl = document.getElementById("game"),
       btnPause = document.getElementById("btnPause"),
-      btnResetLink = document.getElementById("btnResetLink");
+      btnResetLink = document.getElementById("btnResetLink"),
+      btnResume = document.getElementById("btnResume");
 let tiles = [];
 
 function buildBoard(){
@@ -624,6 +627,11 @@ function buildBoard(){
     const checkBtn = document.createElement("button");
     checkBtn.className = "check-btn";
     checkBtn.textContent = "mot ?";
+    // Masqué pour l'instant : le dictionnaire (dict/fr.txt) n'est pas encore
+    // assez complet pour qu'on affiche des verdicts fiables aux joueurs. La
+    // fonctionnalité reste en place — il suffit de retirer ce hidden pour la
+    // rétablir une fois la liste améliorée.
+    checkBtn.hidden = true;
     checkBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); openChecker(i); });
 
     const checker = document.createElement("div");
@@ -751,20 +759,31 @@ function onKey(i, k){
   render();
 }
 
+// En phase "ready" comme en phase "running", seule la tuile de S.active
+// répond à un appui — un simple appui sur une autre tuile ne fait rien
+// (mais reste glissable, voir startDrag). Ça détermine qui joue le premier
+// coup de la même façon que tous les suivants : en appuyant sur LA tuile
+// désignée, pas une quelconque.
 function onTile(i){
+  if (i !== S.active) return;
   if (S.phase === "ready") startWith(i);
-  else if (S.phase === "running" && i === S.active) endTurn();
+  else if (S.phase === "running") endTurn();
 }
 
 function render(){
-  const inGame = S.phase !== "setup";
+  const inGame = S.phase !== "setup" && !showSetup;
   setupEl.hidden = inGame; gameEl.hidden = !inGame; hud.hidden = !inGame;
   btnResetLink.hidden = !inGame;
+  // Visible dès qu'une partie existe (même consultée en arrière-plan via
+  // showSetup) : S.phase ne redevient jamais "setup" après le premier
+  // lancement, c'est donc le seul signal qu'il y a quelque chose à reprendre.
+  btnResume.hidden = (S.phase === "setup");
   if (!inGame){ banner.hidden = true; return; }
 
   S.players.forEach((p, i) => {
     const t = tiles[i];
-    t.classList.toggle("is-active", !p.out && (S.phase === "running" && i === S.active));
+    const isNext = !p.out && i === S.active && (S.phase === "ready" || S.phase === "running");
+    t.classList.toggle("is-active", isNext);
     t.classList.toggle("is-out", p.out);
     // Le nom peut changer sans reconstruire la tuile : un glisser-déposer en
     // phase "ready" échange S.players[i]/[j] sans jamais toucher au DOM.
@@ -773,7 +792,7 @@ function render(){
     t.querySelector(".seat-moves").textContent = p.moves;
     t.querySelector(".seat-msg").textContent =
       p.out ? "temps écoulé"
-      : S.phase === "ready" ? "glisser pour échanger · appuyer pour commencer"
+      : S.phase === "ready" ? (i === S.active ? "appuyer pour commencer" : "glisser pour échanger")
       : (S.phase === "running" && i === S.active) ? "valider mon coup" : "";
 
     const seat = seatOf(i);
@@ -893,8 +912,6 @@ function group(id, initial, apply){
   set(initial);
 }
 group("optPlayers", 2,  v => { S.count = v; buildRoster(); });
-group("optInc",    60,  v => S.incMs = v * 1000);
-group("optScore",   1,  v => S.askScore = !!v);
 
 function stepper(id, initial, min, max, apply){
   const el = document.getElementById(id), valEl = el.querySelector(".stepper__val > span");
@@ -908,10 +925,22 @@ function stepper(id, initial, min, max, apply){
   render();
 }
 stepper("optBase", 12, 1, 60, v => S.baseMs = v * 60000);
+stepper("optInc",  60, 0, 300, v => S.incMs = v * 1000);
 
 document.getElementById("btnStart").addEventListener("click", () => { beep(660, .04); newGame(); });
 btnPause.addEventListener("click", togglePause);
-document.getElementById("btnQuit").addEventListener("click", () => { disarmReset(); S.phase = "setup"; render(); });
+// Consulter les réglages pendant une partie ne l'efface plus : on la met en
+// pause (pour figer le temps proprement, via commit()) et on affiche
+// l'écran de réglages par-dessus sans toucher à S. « Reprendre la partie »
+// se contente de redonner la main à l'écran de jeu, encore en pause — c'est
+// le bouton Pause du HUD qui relance vraiment le chrono.
+document.getElementById("btnQuit").addEventListener("click", () => {
+  disarmReset();
+  if (S.phase === "running") togglePause();
+  showSetup = true;
+  render();
+});
+btnResume.addEventListener("click", () => { showSetup = false; render(); });
 
 /* Armer / confirmer : premier appui = simple avertissement pendant 3 s,
    second appui dans ce délai = réinitialisation réelle. Évite une popup
