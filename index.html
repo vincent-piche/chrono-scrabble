@@ -162,6 +162,16 @@ legend{
    un peu, celle qu'on survole se cerne pour indiquer l'échange à venir. */
 .tile.is-dragging{opacity:.5}
 .tile.drag-over{box-shadow:inset 0 0 0 3px var(--azure)}
+/* Sans ça, l'échange des noms au dépôt (simple textContent mis à jour) passe
+   inaperçu — rien ne bouge à l'écran. Ce flash marque les DEUX tuiles
+   concernées pour que l'échange se voie, pas seulement se lise. */
+.tile.swap-flash{animation:swapFlash .45s ease-out}
+@keyframes swapFlash{
+  0%{box-shadow:inset 0 0 0 3px var(--azure);scale:1.035}
+  100%{box-shadow:inset 0 0 0 3px transparent;scale:1}
+}
+.tile.swap-flash .seat-name{animation:swapNameFade .45s ease-out}
+@keyframes swapNameFade{0%{opacity:0}35%{opacity:0}100%{opacity:1}}
 .tile.is-active{
   background:var(--tile);color:var(--ink);
   box-shadow:inset 0 0 0 3px rgba(30,27,20,.14), 0 6px 0 rgba(0,0,0,.28);
@@ -717,10 +727,19 @@ function endDrag(e){
     if (target !== null && target !== from){
       [S.players[from], S.players[target]] = [S.players[target], S.players[from]];
       render();
+      flashSwap(from, target);
     }
   } else {
     onTile(from);   // pas de déplacement : c'était un simple appui pour démarrer
   }
+}
+function flashSwap(a, b){
+  [a, b].forEach(i => {
+    const t = tiles[i];
+    t.classList.remove("swap-flash");
+    void t.offsetWidth; // relance l'animation même si elle vient de tourner
+    t.classList.add("swap-flash");
+  });
 }
 function cancelDrag(){
   if (DRAG.from === null) return;
@@ -786,15 +805,14 @@ function onKey(i, k){
   render();
 }
 
-// En phase "ready" comme en phase "running", seule la tuile de S.active
-// répond à un appui — un simple appui sur une autre tuile ne fait rien
-// (mais reste glissable, voir startDrag). Ça détermine qui joue le premier
-// coup de la même façon que tous les suivants : en appuyant sur LA tuile
-// désignée, pas une quelconque.
+// Glisser (voir startDrag) fixe l'ordre de rotation des joueurs — pas qui
+// commence. Ces deux décisions sont volontairement séparées : en phase
+// "ready", n'importe quelle tuile répond à un appui pour désigner qui joue
+// le premier coup (comme un tirage de lettres autour de la vraie table).
+// Une fois la partie lancée, seule la tuile de S.active valide un coup.
 function onTile(i){
-  if (i !== S.active) return;
   if (S.phase === "ready") startWith(i);
-  else if (S.phase === "running") endTurn();
+  else if (S.phase === "running" && i === S.active) endTurn();
 }
 
 function render(){
@@ -809,7 +827,10 @@ function render(){
 
   S.players.forEach((p, i) => {
     const t = tiles[i];
-    const isNext = !p.out && i === S.active && (S.phase === "ready" || S.phase === "running");
+    // En phase "ready", aucune tuile n'est "la" tuile active : elles peuvent
+    // toutes démarrer la partie, donc aucune n'est mise en avant par rapport
+    // aux autres avant que quelqu'un ait effectivement appuyé.
+    const isNext = !p.out && i === S.active && S.phase === "running";
     t.classList.toggle("is-active", isNext);
     t.classList.toggle("is-out", p.out);
     // Le nom peut changer sans reconstruire la tuile : un glisser-déposer en
@@ -819,7 +840,7 @@ function render(){
     t.querySelector(".seat-moves").textContent = p.moves;
     t.querySelector(".seat-msg").textContent =
       p.out ? "temps écoulé"
-      : S.phase === "ready" ? (i === S.active ? "appuyer pour commencer" : "glisser pour échanger")
+      : S.phase === "ready" ? "glisser pour échanger · appuyer pour commencer"
       : (S.phase === "running" && i === S.active) ? "valider mon coup" : "";
 
     const seat = seatOf(i);
