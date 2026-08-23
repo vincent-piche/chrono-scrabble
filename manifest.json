@@ -1,7 +1,7 @@
 {
-  "name": "Chrono Scrabble",
-  "short_name": "Chrono Scrabble",
-  "description": "Horloge d'échecs et compteur de points pour le Scrabble, 2 à 4 joueurs.",
+  "name": "Chrono Word",
+  "short_name": "Chrono Word",
+  "description": "Horloge d'échecs et compteur de points pour le Scrabble et autres jeux de lettres, 2 à 4 joueurs. Application indépendante, non affiliée aux titulaires de la marque SCRABBLE.",
   "id": "/",
   "start_url": "./index.html",
   "scope": "./",

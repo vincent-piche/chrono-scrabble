@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Chrono Scrabble">
+<meta name="apple-mobile-web-app-title" content="Chrono Word">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#10312A">
-<title>Chrono Scrabble</title>
+<title>Chrono Word</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -71,6 +71,10 @@ body{
 .tagline{
   font-size:13px;line-height:1.5;color:rgba(239,226,198,.6);
   max-width:34ch;margin-top:14px;
+}
+.disclaimer{
+  font-size:10.5px;line-height:1.5;color:rgba(239,226,198,.35);
+  max-width:36ch;margin-top:10px;
 }
 fieldset{border:0}
 legend{
@@ -362,17 +366,20 @@ legend{
 <body>
 <div id="rotate-guard" aria-hidden="true">
   <strong>Tournez votre appareil</strong>
-  <p>Chrono Scrabble se joue en mode portrait.</p>
+  <p>Chrono Word se joue en mode portrait.</p>
 </div>
 <div id="app">
 
   <!-- ÉCRAN 1 — RÉGLAGES -->
   <section id="setup" class="screen">
     <header>
-      <div class="wordmark" aria-label="Chrono Scrabble">
+      <div class="wordmark" aria-label="Chrono Word">
         <span>C</span><span>H</span><span>R</span><span>O</span><span>N</span><span>O</span>
       </div>
       <p class="tagline">Une horloge d'échecs pour le Scrabble. Chaque joueur appuie sur sa propre tuile pour valider son coup et lancer le voisin.</p>
+      <!-- SCRABBLE® est une marque déposée de Mattel/Hasbro selon les
+           territoires ; Chrono Word n'y est ni affilié ni approuvé. -->
+      <p class="disclaimer">SCRABBLE® est une marque déposée de Mattel/Hasbro. Chrono Word est une application indépendante, non affiliée et non approuvée par les titulaires de la marque.</p>
     </header>
 
     <button class="start resume" id="btnResume" hidden>Reprendre la partie</button>
